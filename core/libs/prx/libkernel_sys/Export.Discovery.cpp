@@ -61,13 +61,59 @@ int APS5_VABI cpuset_nid_postfix(void) {
     return 0;
 }
 
-int APS5_VABI cpuset_getid_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
+extern "C" {
+int APS5_VABI getpid_nid_postfix();
+int APS5_VABI scePthreadGetthreadid();
+int APS5_VABI cpuset_getaffinity_nid_postfix(int level, int which, std::int64_t id, std::size_t size, void* mask);
+}
+
+int APS5_VABI cpuset_getid_nid_postfix(int level, int which, std::int64_t id, int* setid) {
+    constexpr int WhichThread = 1, WhichProcess = 2;
+    constexpr int GuestEsrch = 3, GuestEfault = 14, GuestEinval = 22;
+    constexpr int CpusetDefault = 1;
+    const auto fail = [](int error) {
+        *__error_nid_postfix() = error;
+        return -1;
+    };
+    if (!setid) return fail(GuestEfault);
+    if (level < 1 || level > 3) return fail(GuestEinval);
+    if (which == WhichThread) {
+        if (id != -1 && id != scePthreadGetthreadid()) {
+            std::uint64_t mask = 0;
+            if (cpuset_getaffinity_nid_postfix(3, 1, id, sizeof(mask), &mask) != 0) return fail(GuestEsrch);
+        }
+    } else if (which == WhichProcess) {
+        if (id != -1 && id != getpid_nid_postfix() && id != 0) return fail(GuestEsrch);
+    } else if (which >= 3 && which <= 6) {
+        NotImplemented_nid_no_patch("cpuset_getid other than the calling thread or process");
+    } else {
+        return fail(GuestEinval);
+    }
+    *setid = CpusetDefault;
     return 0;
 }
 
-int APS5_VABI cpuset_setid_nid_postfix(void) {
-    NotImplemented_nid_no_patch(__func__);
+int APS5_VABI cpuset_setid_nid_postfix(int which, std::int64_t id, int setid) {
+    constexpr int WhichThread = 1, WhichProcess = 2;
+    constexpr int GuestEsrch = 3, GuestEinval = 22;
+    constexpr int CpusetDefault = 1;
+    const auto fail = [](int error) {
+        *__error_nid_postfix() = error;
+        return -1;
+    };
+    if (which == WhichThread) {
+        if (id != -1 && id != scePthreadGetthreadid()) {
+            std::uint64_t mask = 0;
+            if (cpuset_getaffinity_nid_postfix(3, 1, id, sizeof(mask), &mask) != 0) return fail(GuestEsrch);
+        }
+    } else if (which == WhichProcess) {
+        if (id != -1 && id != getpid_nid_postfix() && id != 0) return fail(GuestEsrch);
+    } else if (which >= 3 && which <= 6) {
+        NotImplemented_nid_no_patch("cpuset_setid other than the calling thread or process");
+    } else {
+        return fail(GuestEinval);
+    }
+    if (setid != CpusetDefault && setid != -1) return fail(GuestEsrch);
     return 0;
 }
 

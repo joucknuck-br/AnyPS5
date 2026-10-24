@@ -1,6 +1,8 @@
 #include "SceTypes.hpp"
 #include "prx/libkernel/Pthread/include/Atfork.hpp"
+#include <cstdint>
 #include <cstdlib>
+#include <stdexcept>
 
 extern "C" {
 int APS5_VABI scePthreadAttrInit(PthreadAttr* attr);
@@ -10,6 +12,11 @@ int APS5_VABI scePthreadAttrSetscope(PthreadAttr* attr, int scope);
 int APS5_VABI scePthreadAtfork(PthreadAtforkHandler prepare, PthreadAtforkHandler parent, PthreadAtforkHandler child);
 int APS5_VABI scePthreadSetconcurrency(int level);
 int APS5_VABI scePthreadGetconcurrency();
+int APS5_VABI cpuset_getid_nid_postfix(int level, int which, std::int64_t id, int* setid);
+int APS5_VABI cpuset_setid_nid_postfix(int which, std::int64_t id, int setid);
+int APS5_VABI scePthreadGetthreadid();
+int APS5_VABI getpid_nid_postfix();
+int* APS5_VABI __error_nid_postfix();
 }
 
 static constexpr int SCE_KERNEL_ERROR_EINVAL = static_cast<int>(0x80020016);
@@ -58,9 +65,67 @@ static void TestAtfork() {
     Require(handlers[before + 1].prepare == nullptr && handlers[before + 1].parent == nullptr && handlers[before + 1].child == nullptr);
 }
 
+static void TestCpusetId() {
+    int setid = -1;
+    Require(cpuset_getid_nid_postfix(3, 1, -1, &setid) == 0 && setid == 1);
+    setid = -1;
+    Require(cpuset_getid_nid_postfix(3, 1, scePthreadGetthreadid(), &setid) == 0 && setid == 1);
+    setid = -1;
+    Require(cpuset_getid_nid_postfix(3, 2, -1, &setid) == 0 && setid == 1);
+    setid = -1;
+    Require(cpuset_getid_nid_postfix(3, 2, 0, &setid) == 0 && setid == 1);
+    setid = -1;
+    Require(cpuset_getid_nid_postfix(3, 2, getpid_nid_postfix(), &setid) == 0 && setid == 1);
+
+    setid = -1;
+    Require(cpuset_getid_nid_postfix(1, 1, -1, &setid) == 0 && setid == 1);
+    setid = -1;
+    Require(cpuset_getid_nid_postfix(2, 1, -1, &setid) == 0 && setid == 1);
+
+    Require(cpuset_getid_nid_postfix(3, 1, -1, nullptr) == -1 && *__error_nid_postfix() == 14);
+
+    for (const int level : {0, 4, -1}) {
+        Require(cpuset_getid_nid_postfix(level, 1, -1, &setid) == -1 && *__error_nid_postfix() == 22);
+    }
+
+    for (const int which : {0, 7, -1}) {
+        Require(cpuset_getid_nid_postfix(3, which, -1, &setid) == -1 && *__error_nid_postfix() == 22);
+    }
+
+    Require(cpuset_getid_nid_postfix(3, 2, getpid_nid_postfix() + 1000, &setid) == -1 && *__error_nid_postfix() == 3);
+    Require(cpuset_getid_nid_postfix(3, 1, 9999999, &setid) == -1 && *__error_nid_postfix() == 3);
+
+    Require(cpuset_setid_nid_postfix(1, -1, 1) == 0);
+    Require(cpuset_setid_nid_postfix(1, scePthreadGetthreadid(), 1) == 0);
+    Require(cpuset_setid_nid_postfix(2, -1, 1) == 0);
+    Require(cpuset_setid_nid_postfix(2, 0, 1) == 0);
+    Require(cpuset_setid_nid_postfix(2, getpid_nid_postfix(), 1) == 0);
+    Require(cpuset_setid_nid_postfix(1, -1, -1) == 0);
+
+    Require(cpuset_setid_nid_postfix(1, -1, 2) == -1 && *__error_nid_postfix() == 3);
+    Require(cpuset_setid_nid_postfix(2, -1, 0) == -1 && *__error_nid_postfix() == 3);
+
+    for (const int which : {0, 7, -1}) {
+        Require(cpuset_setid_nid_postfix(which, -1, 1) == -1 && *__error_nid_postfix() == 22);
+    }
+    Require(cpuset_setid_nid_postfix(2, getpid_nid_postfix() + 1000, 1) == -1 && *__error_nid_postfix() == 3);
+    Require(cpuset_setid_nid_postfix(1, 9999999, 1) == -1 && *__error_nid_postfix() == 3);
+
+    for (int which = 3; which <= 6; ++which) {
+        bool getThrew = false;
+        try { cpuset_getid_nid_postfix(3, which, -1, &setid); } catch (const std::runtime_error&) { getThrew = true; }
+        Require(getThrew);
+
+        bool setThrew = false;
+        try { cpuset_setid_nid_postfix(which, -1, 1); } catch (const std::runtime_error&) { setThrew = true; }
+        Require(setThrew);
+    }
+}
+
 int main() {
     TestScope();
     TestConcurrency();
     TestAtfork();
+    TestCpusetId();
     return 0;
 }
